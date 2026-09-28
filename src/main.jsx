@@ -370,5 +370,228 @@ function Chat() {
   useEffect(() => {
     if (!learner) return;
     setMessages([]); chatIdx.current = 0;
-    const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
-    const t = setTimeout(() => { pushMsg(scripts[0]
+        const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
+    const t = setTimeout(() => { pushMsg(scripts[0], 'them'); chatIdx.current = 1; }, 800);
+    intervalRef.current = setInterval(() => {
+      if (chatIdx.current < scripts.length) { pushMsg(scripts[chatIdx.current], 'them'); chatIdx.current++; }
+      else clearInterval(intervalRef.current);
+    }, 7000);
+    return () => { clearTimeout(t); if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [activeLearner]);
+
+  const send = e => {
+    e.preventDefault();
+    const txt = input.trim(); if (!txt) return;
+    pushMsg(txt, 'me'); setInput('');
+    setTimeout(() => pushMsg(REPLIES[Math.floor(Math.random() * REPLIES.length)], 'them'), 1100 + Math.random() * 700);
+  };
+  const onEnd = () => { if (intervalRef.current) clearInterval(intervalRef.current); endChat(); };
+  if (!learner) return null;
+
+  return (
+    <div className="chat-wrap">
+      <div className="chat-container">
+        <div className="chat-hd">
+          <button className="chat-back" onClick={() => setView('dashboard')}><ArrowLeft size={20} /></button>
+          <div className="chat-partner">
+            <div className="avatar" style={{ width: 36, height: 36, fontSize: '.85rem', background: learner.col }}>{learner.ini}</div>
+            <div>
+              <div className="chat-name">{learner.name}</div>
+              <span style={{ fontSize: '.73rem', color: 'var(--green)' }}>Active now</span>
+            </div>
+          </div>
+          <button onClick={onEnd} className="end-btn">End &amp; Claim $13.68</button>
+        </div>
+        <div className="chat-msgs" ref={msgsRef}>
+          {messages.map((m, i) => (
+            <div className="msg-row" key={i} style={{ justifyContent: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
+              {m.who === 'them' ? (
+                <div style={{ display: 'flex', gap: 7, alignItems: 'flex-end' }}>
+                  <div className="avatar" style={{ width: 28, height: 28, fontSize: '.68rem', background: learner.col, flexShrink: 0 }}>{learner.ini}</div>
+                  <div className="bubble" style={{ background: '#fff', border: '1px solid var(--border)', color: 'var(--t1)' }}>
+                    <span style={{ fontSize: '.86rem' }}>{m.text}</span>
+                    <span className="btime" style={{ color: 'var(--tm)' }}>{m.time}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bubble" style={{ background: 'var(--green)', color: '#fff' }}>
+                  <span style={{ fontSize: '.86rem' }}>{m.text}</span>
+                  <span className="btime" style={{ color: 'rgba(255,255,255,.7)' }}>{m.time}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <form className="chat-form" onSubmit={send}>
+          <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Type your message..." required />
+          <button type="submit" className="gbtn"><Send size={18} /></button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ EARNINGS ═══════════════════ */
+function Earnings() {
+  const { balance, totalEarned, tasksDone, ledger, setBalance } = useApp();
+  const [payoutAlert, setPayoutAlert] = useState(null);
+  const [withdrawn, setWithdrawn] = useState(0);
+  const canWithdraw = balance >= 1 && !payoutAlert;
+  const requestPayout = () => {
+    if (!canWithdraw) return;
+    setPayoutAlert('✓ Withdrawal request submitted! You will receive your payment within 24 hours.');
+    setWithdrawn(w => w + balance); setBalance(0);
+    setTimeout(() => setPayoutAlert(null), 5000);
+  };
+  return (
+    <div className="earn-wrap">
+      <h1 className="dash-title">My Earnings</h1>
+      <p className="dash-sub" style={{ marginBottom: 18 }}>Track your payments and earnings</p>
+      <div className="bal-banner">
+        <div>
+          <div className="bal-title">Available Balance</div>
+          <div className="bal-val">$<span>{balance.toFixed(2)}</span> USD</div>
+          <div className="bal-min">Minimum withdrawal amount is $1 USD</div>
+        </div>
+        <button onClick={requestPayout} disabled={!canWithdraw} className={`wd-btn ${canWithdraw ? 'enabled' : ''}`}>
+          <Wallet size={15} /> Request Withdrawal
+        </button>
+      </div>
+      <div className="earn-stats">
+        <div className="estat-card"><div><div className="estat-lbl">Total Earnings</div><div className="estat-val">${totalEarned.toFixed(2)}</div></div><div className="estat-icon ic-gb"><DollarSign size={18} /></div></div>
+        <div className="estat-card"><div><div className="estat-lbl">Withdrawn</div><div className="estat-val">${withdrawn.toFixed(2)}</div></div><div className="estat-icon ic-bb"><CheckSquare size={18} /></div></div>
+        <div className="estat-card"><div><div className="estat-lbl">Pending Tasks</div><div className="estat-val">$0.00</div></div><div className="estat-icon ic-ob"><Clock size={18} /></div></div>
+        <div className="estat-card"><div><div className="estat-lbl">Tasks Completed</div><div className="estat-val">{tasksDone}</div></div><div className="estat-icon ic-gb"><TrendingUp size={18} /></div></div>
+      </div>
+      {payoutAlert && <div className="alert alert-success" style={{ display: 'block' }}>{payoutAlert}</div>}
+      <div className="hist-box">
+        <div className="hist-title">Earnings History</div>
+        {ledger.length === 0 ? <div className="hist-empty">No earnings yet</div> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="hist-tbl">
+              <thead><tr><th>Date</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead>
+              <tbody>{ledger.map((e, i) => <tr key={i}><td>{e.date}</td><td>{e.method}</td><td><b>{e.amount}</b></td><td className="status-ok">{e.status}</td></tr>)}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <div className="wd-info">
+        <div className="wd-info-title">Withdrawal Information</div>
+        <div className="wd-row"><div className="wd-ico wi-mp"><Smartphone size={14} /></div><div><b style={{ fontSize: '.88rem' }}>M-Pesa</b><span style={{ fontSize: '.76rem', color: 'var(--t2)' }}> Processed within 24 hours</span></div></div>
+        <div className="wd-row"><div className="wd-ico wi-pp"><CreditCard size={14} /></div><div><b style={{ fontSize: '.88rem' }}>PayPal</b><span style={{ fontSize: '.76rem', color: 'var(--t2)' }}> Processed within 24–48 hours</span></div></div>
+        <div className="wd-row"><div className="wd-ico wi-bt"><Bitcoin size={14} /></div><div><b style={{ fontSize: '.88rem' }}>Bitcoin</b><span style={{ fontSize: '.76rem', color: 'var(--t2)' }}> Processed within 24–48 hours</span></div></div>
+      </div>
+      <div className="pro-tip">
+        <Lightbulb size={17} style={{ color: '#eab308' }} />
+        <div><b style={{ color: '#1e3a8a', fontSize: '.88rem' }}>Pro Tip</b>
+          <p style={{ color: '#1e40af', fontSize: '.82rem', marginTop: 2 }}>Complete high-quality tasks to earn bonus payments and improve your quality score for access to premium tasks!</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ PROFILE ═══════════════════ */
+function Profile() {
+  const { tasksDone, profile, verified, setEditModalOpen, setActModalOpen } = useApp();
+  return (
+    <div className="profile-wrap">
+      <h1 className="dash-title">My Profile</h1>
+      <p className="dash-sub">Manage your account settings and information</p>
+      <div className="profile-stat-grid">
+        <div className="pstat-card"><div className="pstat-icon-wrap" style={{ background: '#f0fdf4' }}><Award size={24} style={{ color: 'var(--green)' }} /></div><div className="pstat-label">Tasks Completed</div><div className="pstat-value">{tasksDone}</div></div>
+        <div className="pstat-card"><div className="pstat-icon-wrap" style={{ background: '#fef3c7' }}><Star size={24} style={{ color: 'var(--orange)' }} /></div><div className="pstat-label">Average Rating</div><div className="pstat-value">{tasksDone > 0 ? '4.8' : 'N/A'}</div></div>
+        <div className="pstat-card"><div className="pstat-icon-wrap" style={{ background: '#eff6ff' }}><TrendingUp size={24} style={{ color: 'var(--blue)' }} /></div><div className="pstat-label">Quality Score</div><div className="pstat-value">{tasksDone > 0 ? '92%' : '0%'}</div></div>
+      </div>
+      <div className="profile-section-card">
+        <div className="profile-section-head">
+          <div className="profile-section-title">Personal Information</div>
+          <button className="edit-btn" onClick={() => setEditModalOpen(true)}><Pencil size={13} /> Edit Profile</button>
+        </div>
+        <div className="profile-info-row"><div className="profile-info-label">Email</div><div className="profile-info-value">{profile.email || '-'}</div></div>
+        <div className="profile-info-row"><div className="profile-info-label">Full Name</div><div className="profile-info-value">{profile.fullname || '-'}</div></div>
+        <div className="profile-info-row"><div className="profile-info-label">Phone Number</div><div className="profile-info-value">{profile.phone || 'Not set'}</div></div>
+      </div>
+      <div className="profile-section-card">
+        <div className="profile-section-head"><div className="profile-section-title">Account Status</div></div>
+        <div className="acct-status-row">
+          <div className="acct-status-label">Account Verification</div>
+          {verified ? <span className="verify-status-badge verify-badge-yes"><CheckCircle size={13} /> Verified</span>
+            : <span className="verify-status-badge verify-badge-no"><XCircle size={13} /> Not Verified</span>}
+        </div>
+        <p style={{ fontSize: '.84rem', color: 'var(--t2)', marginBottom: 0 }}>Complete verification to start earning. Quick process with M-Pesa payment.</p>
+        {!verified && (
+          <div className="verify-cta-box">
+            <div className="verify-cta-title"><span style={{ fontSize: '1.1rem' }}>🚀</span> Get Verified Now</div>
+            <div className="verify-cta-desc">Complete verification to access all tasks and start earning. Quick process with M-Pesa payment.</div>
+            <button className="verify-cta-btn" onClick={() => setActModalOpen(true)}><ShieldCheck size={15} /> Complete Verification</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ EDIT PROFILE MODAL ═══════════════════ */
+function EditProfileModal() {
+  const { editModalOpen, setEditModalOpen, profile, setProfile } = useApp();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [alert, setAlert] = useState(null);
+  useEffect(() => {
+    if (editModalOpen) { setName(profile.fullname || ''); setEmail(profile.email || ''); setPhone(profile.phone || ''); setAlert(null); }
+  }, [editModalOpen, profile]);
+  if (!editModalOpen) return null;
+  const close = () => setEditModalOpen(false);
+  const save = () => {
+    if (!name.trim()) { setAlert({ type: 'error', msg: 'Please enter your full name.' }); return; }
+    if (!email.trim()) { setAlert({ type: 'error', msg: 'Please enter an email address.' }); return; }
+    setProfile({ fullname: name.trim(), email: email.trim(), phone: phone.trim() });
+    setAlert({ type: 'success', msg: 'Profile updated successfully!' });
+    setTimeout(close, 900);
+  };
+  return (
+    <div className="edit-modal-ov open">
+      <div className="edit-modal-box">
+        <div className="edit-modal-title">Edit Profile</div>
+        <div className="fg"><label>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" /></div>
+        <div className="fg"><label>Email Address</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" /></div>
+        <div className="fg"><label>Phone Number (M-Pesa)</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678" /></div>
+        {alert && <div className={`alert alert-${alert.type}`} style={{ display: 'block' }}>{alert.msg}</div>}
+        <div className="edit-modal-btns">
+          <button className="emod-cancel" onClick={close}>Cancel</button>
+          <button className="emod-save" onClick={save}>Save Changes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ APP ═══════════════════ */
+function AppShell() {
+  const { view } = useApp();
+  const [onboarded, setOnboarded] = useState(false);
+  if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />;
+  return (
+    <>
+      <Header />
+      <MobileDrawer />
+      <div className={`view ${view === 'dashboard' ? 'active' : ''}`}><Dashboard /></div>
+      <div className={`view ${view === 'earnings' ? 'active' : ''}`}><Earnings /></div>
+      <div className={`view ${view === 'chat' ? 'active' : ''}`}><Chat /></div>
+      <div className={`view ${view === 'profile' ? 'active' : ''}`}><Profile /></div>
+      <ActivationModal />
+      <StkOverlay />
+      <EditProfileModal />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <AppProvider>
+      <AppShell />
+    </AppProvider>
+  </React.StrictMode>
+);
