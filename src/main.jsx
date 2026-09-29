@@ -32,6 +32,21 @@ const REPLIES = [
   "Exactly! Swahili isn't that hard once you start."
 ];
 
+/* ═══════════════════ POLLING HELPER ═══════════════════ */
+async function pollPaymentStatus(transactionId, { intervalMs = 3000, maxWaitMs = 90000 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const r = await fetch(`/api/check-payment?transactionId=${transactionId}`);
+      const d = await r.json();
+      if (d.status === 'COMPLETED') return 'success';
+      if (d.status === 'FAILED') return 'failed';
+    } catch (_) { /* keep polling */ }
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
+  return 'timeout';
+}
+
 /* ═══════════════════ CONTEXT ═══════════════════ */
 const AppContext = createContext(null);
 const useApp = () => useContext(AppContext);
@@ -275,14 +290,20 @@ function ActivationModal() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || data.message || 'STK push failed');
-      if (data?.transactionId || data?.status === 'SENT' || data?.success) {
-        setStkPhone(norm); close(); setStkState('waiting');
-        setTimeout(() => setStkState('success'), 4000);
+      if (data?.transactionId) {
+        setStkPhone(norm);
+        close();
+        setStkState('waiting');
+        const result = await pollPaymentStatus(data.transactionId);
+        if (result === 'success') setStkState('success');
+        else setStkState('fail');
       } else {
-        setAlert({ type: 'error', msg: data?.message || 'STK push failed. Try again.' }); setLoading(false);
+        setAlert({ type: 'error', msg: data?.message || 'STK push failed. Try again.' });
+        setLoading(false);
       }
     } catch (err) {
-      setAlert({ type: 'error', msg: err.message || 'Network error. Try again.' }); setLoading(false);
+      setAlert({ type: 'error', msg: err.message || 'Network error. Try again.' });
+      setLoading(false);
     }
   };
 
@@ -599,8 +620,15 @@ function NetworkActivationFee() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'STK push failed');
-      if (data?.transactionId || data?.status === 'SENT') { setWithdrawalPhone(norm); setWithdrawalStage('release'); }
-      else throw new Error(data?.message || 'STK push failed');
+      if (data?.transactionId) {
+        const result = await pollPaymentStatus(data.transactionId);
+        if (result === 'success') {
+          setWithdrawalPhone(norm);
+          setWithdrawalStage('release');
+        } else {
+          throw new Error('Payment not confirmed. Please try again.');
+        }
+      } else throw new Error(data?.message || 'STK push failed');
     } catch (err) { setError(err.message || 'Network error. Try again.'); }
     finally { setLoading(false); }
   };
@@ -612,7 +640,7 @@ function NetworkActivationFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Sending STK Push...' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
@@ -646,8 +674,11 @@ function DisbursementReleaseFee() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'STK push failed');
-      if (data?.transactionId || data?.status === 'SENT') setWithdrawalStage('sending');
-      else throw new Error(data?.message || 'STK push failed');
+      if (data?.transactionId) {
+        const result = await pollPaymentStatus(data.transactionId);
+        if (result === 'success') setWithdrawalStage('sending');
+        else throw new Error('Payment not confirmed. Please try again.');
+      } else throw new Error(data?.message || 'STK push failed');
     } catch (err) { setError(err.message || 'Network error. Try again.'); }
     finally { setLoading(false); }
   };
@@ -659,7 +690,7 @@ function DisbursementReleaseFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Sending STK Push...' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
       <button onClick={endWithdrawal} className="fee-cancel-link">Cancel Withdrawal</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
