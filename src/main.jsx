@@ -33,20 +33,42 @@ const REPLIES = [
 ];
 
 /* ═══════════════════ POLLING HELPER ═══════════════════ */
-async function pollPaymentStatus(transactionId, { intervalMs = 3000, maxWaitMs = 90000, signal } = {}) {
+async function pollPaymentStatus(transactionId, { intervalMs = 2000, maxWaitMs = 90000, minWaitMs = 15000, signal } = {}) {
   const start = Date.now();
+  let lastStatus = null;
+  let resolvedStatus = null;
+
   while (Date.now() - start < maxWaitMs) {
     if (signal?.aborted) return 'cancelled';
     try {
-      const r = await fetch(`/api/check-payment?transactionId=${transactionId}`);
+      const r = await fetch(`/api/status?transactionId=${encodeURIComponent(transactionId)}`);
       const d = await r.json();
-      if (d.status === 'COMPLETED') return 'success';
-      if (d.status === 'FAILED') return 'failed';
-    } catch (_) { /* keep polling */ }
+      lastStatus = d.status;
+      console.log('[poll]', transactionId, '→', d.status);
+
+      if (d.status === 'COMPLETED' || d.status === 'SUCCESS') { resolvedStatus = 'success'; break; }
+      if (d.status === 'FAILED' || d.status === 'CANCELLED' || d.status === 'REJECTED') { resolvedStatus = 'failed'; break; }
+    } catch (err) {
+      console.warn('[poll err]', err);
+    }
     await new Promise(res => setTimeout(res, intervalMs));
     if (signal?.aborted) return 'cancelled';
   }
-  return 'timeout';
+
+  if (!resolvedStatus) {
+    resolvedStatus = lastStatus === 'COMPLETED' ? 'success' : 'timeout';
+  }
+
+  // Enforce minimum wait time (so success doesn't show too fast)
+  const elapsed = Date.now() - start;
+  if (resolvedStatus === 'success' && elapsed < minWaitMs) {
+    const remaining = minWaitMs - elapsed;
+    console.log(`[poll] success after ${elapsed}ms — waiting ${remaining}ms more to hit 15s minimum`);
+    await new Promise(res => setTimeout(res, remaining));
+  }
+
+  if (signal?.aborted) return 'cancelled';
+  return resolvedStatus;
 }
 
 /* ═══════════════════ CONTEXT ═══════════════════ */
