@@ -227,6 +227,24 @@ nav a:hover,nav a.active{color:var(--t1);background:var(--bg3);font-weight:600}
 </head>
 <body>
 <div id="root"></div>
-<script type="module" src="/src/main.jsx"></script>
+<script type="module" src="/src/main.jsx">
+.chat-earn-banner{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:14px 16px;margin:12px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 14px rgba(16,185,129,.3);animation:slideUp .4s ease;flex-wrap:wrap}
+.chat-earn-banner .ceb-info{display:flex;align-items:center;gap:12px}
+.chat-earn-banner .ceb-icon{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chat-earn-banner .ceb-amount{font-size:1.15rem;font-weight:800;font-family:var(--fh);line-height:1.1}
+.chat-earn-banner .ceb-label{font-size:.76rem;opacity:.95;font-weight:500}
+.chat-earn-banner .ceb-btn{background:#fff;color:#059669;border:none;padding:9px 16px;border-radius:8px;font-weight:700;font-size:.85rem;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:var(--fb)}
+.chat-earn-banner .ceb-btn:hover{background:#f0fdf4}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.kyc-page-wrap{max-width:520px;margin:0 auto;padding:clamp(20px,5vw,40px) clamp(16px,4vw,24px);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.kyc-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:clamp(24px,5vw,36px) clamp(20px,5vw,30px);width:100%;box-shadow:var(--s2);text-align:center}
+.kyc-icon{width:72px;height:72px;border-radius:50%;background:#fef3c7;color:#d97706;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px}
+.kyc-title{font-size:1.35rem;color:var(--t1);margin-bottom:8px;font-family:var(--fh)}
+.kyc-desc{font-size:.9rem;color:#64748b;line-height:1.6;margin-bottom:20px}
+.kyc-list{text-align:left;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px}
+.kyc-list-item{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.86rem;color:var(--t2);font-weight:500}
+.kyc-list-item:not(:last-child){border-bottom:1px solid var(--border)}
+.kyc-list-item svg{color:#d97706;flex-shrink:0}
+</script>
 </body>
 </html>
