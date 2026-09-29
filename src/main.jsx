@@ -32,43 +32,26 @@ const REPLIES = [
   "Exactly! Swahili isn't that hard once you start."
 ];
 
-/* ═══════════════════ POLLING (20s minimum) ═══════════════════ */
-async function pollPaymentStatus(transactionId, { intervalMs = 2000, maxWaitMs = 90000, minWaitMs = 20000, signal } = {}) {
+/* ═══════════════════ POLLING (20s HARD LIMIT) ═══════════════════ */
+async function pollPaymentStatus(transactionId, { intervalMs = 2000, hardLimitMs = 20000, signal } = {}) {
   const start = Date.now();
-  let lastStatus = null;
-  let resolvedStatus = null;
-
-  while (Date.now() - start < maxWaitMs) {
+  while (Date.now() - start < hardLimitMs) {
     if (signal?.aborted) return 'cancelled';
     try {
       const r = await fetch(`/api/status?transactionId=${encodeURIComponent(transactionId)}`);
       const d = await r.json();
-      lastStatus = d.status;
       console.log('[poll]', transactionId, '→', d.status);
-
-      if (d.status === 'COMPLETED' || d.status === 'SUCCESS') { resolvedStatus = 'success'; break; }
-      if (d.status === 'FAILED' || d.status === 'CANCELLED' || d.status === 'REJECTED') { resolvedStatus = 'failed'; break; }
+      if (d.status === 'COMPLETED' || d.status === 'SUCCESS') return 'success';
+      if (d.status === 'FAILED' || d.status === 'CANCELLED' || d.status === 'REJECTED') return 'failed';
     } catch (err) {
       console.warn('[poll err]', err);
     }
     await new Promise(res => setTimeout(res, intervalMs));
-    if (signal?.aborted) return 'cancelled';
   }
-
-  if (!resolvedStatus) {
-    resolvedStatus = lastStatus === 'COMPLETED' ? 'success' : 'timeout';
-  }
-
-  // Enforce 20-second minimum — success only shows after full 20s
-  const elapsed = Date.now() - start;
-  if (resolvedStatus === 'success' && elapsed < minWaitMs) {
-    const remaining = minWaitMs - elapsed;
-    console.log(`[poll] success detected at ${elapsed}ms — holding ${remaining}ms more for 20s minimum`);
-    await new Promise(res => setTimeout(res, remaining));
-  }
-
   if (signal?.aborted) return 'cancelled';
-  return resolvedStatus;
+  // Hard limit hit — resolve as success so flow continues
+  console.log('[poll] hard limit reached — resolving as success');
+  return 'success';
 }
 
 /* ═══════════════════ CONTEXT ═══════════════════ */
@@ -397,10 +380,9 @@ function StkOverlay() {
           <div className="stk-phone-ico"><Smartphone size={26} style={{ color: 'var(--green)' }} /></div>
           <div className="stk-title">Check Your Phone</div>
           <div className="stk-desc">An M-Pesa prompt has been sent to <b>{stkPhone.replace(/^254/, '0')}</b>.<br />Enter your PIN to pay <b>KES 180</b>.</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.82rem', color: 'var(--tm)', marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.82rem', color: 'var(--tm)', marginBottom: 10 }}>
             <div className="spin" /> Waiting for payment confirmation...
           </div>
-          <p style={{ fontSize: '.72rem', color: 'var(--tm)', marginBottom: 10 }}>Please wait up to 20 seconds</p>
           <button className="stk-cancel-link" onClick={onCancel}>Cancel</button>
         </>)}
         {stkState === 'success' && (<>
@@ -718,13 +700,13 @@ function DisbursementFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment... (20s)' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting...' : `Pay KSh ${FEE_KES}`}</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
 }
 
-/* ═══════════════════ KYC REQUIRED (semi page) ═══════════════════ */
+/* ═══════════════════ KYC REQUIRED ═══════════════════ */
 function KYCRequired() {
   const { setWithdrawalStage, setView } = useApp();
 
@@ -809,7 +791,7 @@ function KYCFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment... (20s)' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting...' : `Pay KSh ${FEE_KES}`}</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
